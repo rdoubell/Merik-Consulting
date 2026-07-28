@@ -1,0 +1,318 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Auth / identity
+// ---------------------------------------------------------------------------
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  phone          String    @unique
+  passwordHash   String
+  role           Role      @default(CUSTOMER)
+  popiaConsentAt DateTime?
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  profile      Profile?
+  applications Application[]
+  otpCodes     OtpCode[]
+  notifications Notification[]
+  auditLogs    AuditLog[] @relation("AuditActor")
+
+  @@index([role])
+}
+
+model Profile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName      String
+  lastName       String
+  idNumber       String   @unique
+  dateOfBirth    DateTime
+  gender         String
+  addressLine    String
+  province       String
+  city           String
+  postalCode     String
+  updatedAt      DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// OTP / notifications (pluggable notifier writes here)
+// ---------------------------------------------------------------------------
+
+enum OtpChannel {
+  EMAIL
+  SMS
+}
+
+enum OtpPurpose {
+  SIGNUP_VERIFICATION
+  LOGIN
+  PASSWORD_RESET
+}
+
+model OtpCode {
+  id         String     @id @default(cuid())
+  userId     String
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel    OtpChannel
+  purpose    OtpPurpose
+  code       String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  createdAt  DateTime   @default(now())
+
+  @@index([userId, purpose])
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String?
+  user      User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  channel   NotificationChannel
+  toAddress String
+  subject   String?
+  body      String
+  meta      String? // JSON-encoded metadata (e.g. otp purpose)
+  createdAt DateTime            @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Application (the loan request itself, pre-approval)
+// ---------------------------------------------------------------------------
+
+enum ApplicationStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  DECLINED
+}
+
+enum EmploymentStatus {
+  EMPLOYED
+  SELF_EMPLOYED
+  UNEMPLOYED
+  CONTRACT
+  RETIRED
+}
+
+enum SalaryFrequency {
+  WEEKLY
+  BI_WEEKLY
+  MONTHLY
+}
+
+enum AccountType {
+  CHEQUE
+  SAVINGS
+}
+
+model Application {
+  id     String            @id @default(cuid())
+  userId String
+  user   User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status ApplicationStatus @default(DRAFT)
+
+  // Employment
+  employmentStatus  EmploymentStatus?
+  employerName      String?
+  occupation        String?
+  monthlyIncome     Float?
+  salaryFrequency   SalaryFrequency?
+  payday            String?
+  employmentLength  String?
+  businessName      String?
+  monthlyRevenue    Float?
+
+  // Banking
+  bankName        String?
+  accountHolder   String?
+  accountNumber   String?
+  branchCode      String?
+  accountType     AccountType?
+
+  // Loan details requested by customer
+  loanAmount   Float?
+  loanTermDays Int?
+
+  // Consent
+  consentTermsAt        DateTime?
+  consentPrivacyAt       DateTime?
+  consentPopiaAt         DateTime?
+  consentCreditCheckAt   DateTime?
+  consentContactAt       DateTime?
+  consentElectronicCommsAt DateTime?
+
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  documents      Document[]
+  riskAssessment RiskAssessment?
+  loan           Loan?
+  auditLogs      AuditLog[]
+
+  @@index([status])
+  @@index([userId])
+}
+
+enum DocumentType {
+  ID_DOCUMENT
+  PAYSLIP
+  BANK_STATEMENT
+  PROOF_OF_ADDRESS
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model Document {
+  id                  String              @id @default(cuid())
+  applicationId       String
+  application         Application         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  type                DocumentType
+  filePath            String
+  originalFileName    String
+  mimeType            String
+  verificationStatus  VerificationStatus  @default(PENDING)
+  uploadedAt          DateTime            @default(now())
+
+  @@index([applicationId])
+}
+
+// ---------------------------------------------------------------------------
+// Risk assessment (server-only outputs, admin-visible)
+// ---------------------------------------------------------------------------
+
+model RiskAssessment {
+  id                 String      @id @default(cuid())
+  applicationId      String      @unique
+  application        Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  creditScoreStub    Int
+  internalRiskScore  Int
+  riskTier           String
+  affordabilityPass  Boolean
+  affordabilityNotes String
+  fraudFlags         String // JSON-encoded array of flag strings
+  verificationStatus VerificationStatus @default(PENDING)
+  computedAt         DateTime    @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Interest / fee configuration (admin-managed, versioned)
+// ---------------------------------------------------------------------------
+
+model InterestConfig {
+  id                     String   @id @default(cuid())
+  name                   String
+  active                 Boolean  @default(false)
+  minAmount              Float
+  maxAmount              Float
+  baseRatePct            Float // total interest % of principal at base risk tier
+  riskTierAdjustmentsPct String // JSON-encoded map, e.g. {"LOW":0,"MEDIUM":5,"HIGH":12}
+  serviceFeeFlat         Float
+  serviceFeePct          Float
+  maxLoanValue           Float
+  allowedTermDays        String // JSON-encoded array, e.g. [7,14,30]
+  createdById            String?
+  createdAt              DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Loans + repayments
+// ---------------------------------------------------------------------------
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  ACTIVE
+  PAID
+  OVERDUE
+}
+
+model Loan {
+  id                String     @id @default(cuid())
+  applicationId     String     @unique
+  application       Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  status            LoanStatus @default(PENDING)
+  principal         Float
+  interestRate      Float // % applied, decided by pricing engine
+  serviceFee        Float
+  totalRepayable    Float
+  termDays          Int
+  interestConfigId  String?
+  approvedById      String?
+  approvedAt        DateTime?
+  disbursedAt       DateTime?
+  dueDate           DateTime?
+  paidAt            DateTime?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  installments RepaymentInstallment[]
+}
+
+enum InstallmentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model RepaymentInstallment {
+  id          String            @id @default(cuid())
+  loanId      String
+  loan        Loan              @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  dueDate     DateTime
+  amountDue   Float
+  amountPaid  Float             @default(0)
+  status      InstallmentStatus @default(PENDING)
+  paidAt      DateTime?
+
+  @@index([loanId])
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail (compliance)
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id            String       @id @default(cuid())
+  actorId       String
+  actor         User         @relation("AuditActor", fields: [actorId], references: [id])
+  applicationId String?
+  application   Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  action        String
+  meta          String? // JSON-encoded details
+  createdAt     DateTime     @default(now())
+
+  @@index([applicationId])
+}
