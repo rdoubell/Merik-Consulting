@@ -63,7 +63,7 @@ export function Footer() {
             <h3 className="text-sm font-semibold text-slate-900">Contact</h3>
             <ul className="mt-3 space-y-2 text-sm text-slate-500">
               <li className="flex items-center gap-2">
-                <Phone className="h-4 w-4" /> 0800 123 456
+                <Phone className="h-4 w-4" /> 0731812043
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4" /> support@merik.co.za

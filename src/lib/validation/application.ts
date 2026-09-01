@@ -15,21 +15,54 @@ export const PROVINCES = [
   "Western Cape",
 ] as const;
 
-export const personalInfoSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  idNumber: z.string().regex(saIdRegex, "Enter a valid 13-digit South African ID number"),
-  dateOfBirth: z.string().min(1, "Date of birth is required"),
-  gender: z.enum(["Male", "Female", "Other", "Prefer not to say"]),
-  mobileNumber: z
-    .string()
-    .regex(/^(\+27|0)[6-8][0-9]{8}$/, "Enter a valid South African mobile number"),
-  email: z.string().email("Enter a valid email address"),
-  addressLine: z.string().min(1, "Residential address is required"),
-  province: z.enum(PROVINCES),
-  city: z.string().min(1, "City is required"),
-  postalCode: z.string().regex(postalCodeRegex, "Enter a valid 4-digit postal code"),
-});
+export const ID_TYPES = ["SA_ID", "PASSPORT"] as const;
+
+export const PERMIT_TYPES = [
+  "General Work Visa",
+  "Critical Skills Work Visa",
+  "Intra-Company Transfer Visa",
+  "Permanent Residence Permit",
+  "Asylum Seeker Permit",
+  "Refugee Status Permit",
+  "Other",
+] as const;
+
+export const personalInfoSchema = z
+  .object({
+    firstName: z.string().min(1, "First name is required"),
+    lastName: z.string().min(1, "Last name is required"),
+    idType: z.enum(ID_TYPES),
+    idNumber: z.string().min(1, "ID/passport number is required"),
+    permitType: z.string().optional(),
+    permitNumber: z.string().optional(),
+    permitExpiryDate: z.string().optional(),
+    dateOfBirth: z.string().min(1, "Date of birth is required"),
+    gender: z.enum(["Male", "Female", "Other", "Prefer not to say"]),
+    mobileNumber: z
+      .string()
+      .regex(/^(\+27|0)[6-8][0-9]{8}$/, "Enter a valid South African mobile number"),
+    email: z.string().email("Enter a valid email address"),
+    addressLine: z.string().min(1, "Residential address is required"),
+    province: z.enum(PROVINCES),
+    city: z.string().min(1, "City is required"),
+    postalCode: z.string().regex(postalCodeRegex, "Enter a valid 4-digit postal code"),
+  })
+  .refine((data) => data.idType !== "SA_ID" || saIdRegex.test(data.idNumber), {
+    message: "Enter a valid 13-digit South African ID number",
+    path: ["idNumber"],
+  })
+  .refine((data) => data.idType !== "PASSPORT" || !!data.permitType, {
+    message: "Select the type of permit or visa held",
+    path: ["permitType"],
+  })
+  .refine((data) => data.idType !== "PASSPORT" || !!data.permitNumber, {
+    message: "Permit/visa number is required",
+    path: ["permitNumber"],
+  })
+  .refine((data) => data.idType !== "PASSPORT" || !!data.permitExpiryDate, {
+    message: "Permit/visa expiry date is required",
+    path: ["permitExpiryDate"],
+  });
 export type PersonalInfoInput = z.infer<typeof personalInfoSchema>;
 
 export const EMPLOYMENT_STATUSES = [

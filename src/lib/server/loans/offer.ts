@@ -15,14 +15,17 @@ export async function evaluateApplication(applicationId: string) {
     where: { id: applicationId },
   });
 
-  const existingActiveLoans = await prisma.loan.count({
-    where: {
-      application: { userId: application.userId },
-      status: { in: ["ACTIVE", "OVERDUE"] },
-    },
-  });
+  const [existingActiveLoans, profile] = await Promise.all([
+    prisma.loan.count({
+      where: {
+        application: { userId: application.userId },
+        status: { in: ["ACTIVE", "OVERDUE"] },
+      },
+    }),
+    prisma.profile.findUnique({ where: { userId: application.userId } }),
+  ]);
 
-  const risk = creditBureau.score(application, existingActiveLoans);
+  const risk = creditBureau.score(application, existingActiveLoans, profile);
 
   await prisma.riskAssessment.upsert({
     where: { applicationId },

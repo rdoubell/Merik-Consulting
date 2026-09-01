@@ -7,6 +7,8 @@ import { FileText } from "lucide-react";
 
 const TYPE_LABEL: Record<string, string> = {
   ID_DOCUMENT: "South African ID",
+  PASSPORT: "Passport",
+  WORK_PERMIT: "Permit / Visa",
   PAYSLIP: "Payslip",
   BANK_STATEMENT: "Bank Statement",
   PROOF_OF_ADDRESS: "Proof of Address",

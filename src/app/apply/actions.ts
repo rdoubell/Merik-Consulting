@@ -40,39 +40,48 @@ export async function savePersonalInfoAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const { firstName, lastName, idNumber, dateOfBirth, gender, addressLine, province, city, postalCode } =
-    parsed.data;
+  const {
+    firstName,
+    lastName,
+    idType,
+    idNumber,
+    permitType,
+    permitNumber,
+    permitExpiryDate,
+    dateOfBirth,
+    gender,
+    addressLine,
+    province,
+    city,
+    postalCode,
+  } = parsed.data;
 
   const existingIdOwner = await prisma.profile.findUnique({ where: { idNumber } });
   if (existingIdOwner && existingIdOwner.userId !== session.userId) {
-    return { error: "This ID number is already associated with another account" };
+    return { error: "This ID/passport number is already associated with another account" };
   }
+
+  const sharedFields = {
+    firstName,
+    lastName,
+    idType,
+    idNumber,
+    permitType: idType === "PASSPORT" ? permitType || null : null,
+    permitNumber: idType === "PASSPORT" ? permitNumber || null : null,
+    permitExpiryDate:
+      idType === "PASSPORT" && permitExpiryDate ? new Date(permitExpiryDate) : null,
+    dateOfBirth: new Date(dateOfBirth),
+    gender,
+    addressLine,
+    province,
+    city,
+    postalCode,
+  };
 
   await prisma.profile.upsert({
     where: { userId: session.userId },
-    create: {
-      userId: session.userId,
-      firstName,
-      lastName,
-      idNumber,
-      dateOfBirth: new Date(dateOfBirth),
-      gender,
-      addressLine,
-      province,
-      city,
-      postalCode,
-    },
-    update: {
-      firstName,
-      lastName,
-      idNumber,
-      dateOfBirth: new Date(dateOfBirth),
-      gender,
-      addressLine,
-      province,
-      city,
-      postalCode,
-    },
+    create: { userId: session.userId, ...sharedFields },
+    update: sharedFields,
   });
 
   redirect(`/apply/employment?applicationId=${applicationId}`);
@@ -156,6 +165,8 @@ export async function saveLoanDetailsAction(
 
 const DOCUMENT_FIELD_TO_TYPE: Record<string, DocumentType> = {
   idDocument: "ID_DOCUMENT",
+  passport: "PASSPORT",
+  workPermit: "WORK_PERMIT",
   payslip: "PAYSLIP",
   bankStatement: "BANK_STATEMENT",
   proofOfAddress: "PROOF_OF_ADDRESS",
@@ -192,11 +203,23 @@ export async function uploadDocumentsAction(
     });
   }
 
-  const hasId = await prisma.document.findFirst({
-    where: { applicationId, type: "ID_DOCUMENT" },
+  const profile = await prisma.profile.findUnique({ where: { userId: session.userId } });
+  const requiredTypes: DocumentType[] =
+    profile?.idType === "PASSPORT" ? ["PASSPORT", "WORK_PERMIT"] : ["ID_DOCUMENT"];
+
+  const uploadedRequired = await prisma.document.findMany({
+    where: { applicationId, type: { in: requiredTypes } },
   });
-  if (!hasId) {
-    return { error: "Please upload your South African ID to continue" };
+  const missing = requiredTypes.filter(
+    (type) => !uploadedRequired.some((doc) => doc.type === type)
+  );
+  if (missing.length > 0) {
+    return {
+      error:
+        profile?.idType === "PASSPORT"
+          ? "Please upload both your passport and your permit/visa to continue"
+          : "Please upload your South African ID to continue",
+    };
   }
 
   redirect(`/apply/consent?applicationId=${applicationId}`);

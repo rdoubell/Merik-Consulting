@@ -1,5 +1,5 @@
 import "server-only";
-import type { Application } from "@/generated/prisma";
+import type { Application, Profile } from "@/generated/prisma";
 
 export type RiskTier = "LOW" | "MEDIUM" | "HIGH";
 
@@ -20,7 +20,11 @@ export type RiskResult = {
  * changing the export at the bottom of the file.
  */
 export interface CreditBureauProvider {
-  score(application: Application, existingActiveLoans: number): RiskResult;
+  score(
+    application: Application,
+    existingActiveLoans: number,
+    profile: Profile | null
+  ): RiskResult;
 }
 
 function seededVariance(idNumber: string | undefined, spread: number) {
@@ -33,7 +37,11 @@ function seededVariance(idNumber: string | undefined, spread: number) {
 }
 
 class RulesBasedScorer implements CreditBureauProvider {
-  score(application: Application, existingActiveLoans: number): RiskResult {
+  score(
+    application: Application,
+    existingActiveLoans: number,
+    profile: Profile | null
+  ): RiskResult {
     const fraudFlags: string[] = [];
     const income = application.monthlyIncome ?? 0;
     const loanAmount = application.loanAmount ?? 0;
@@ -60,6 +68,14 @@ class RulesBasedScorer implements CreditBureauProvider {
       ? "Declared income supports the requested loan amount within internal thresholds."
       : "Declared income is low relative to the requested loan amount.";
 
+    // --- Work permit / visa validity: a permit that expires before the loan
+    // is due back is a real collection risk for a foreign-national borrower.
+    let permitExpiresBeforeLoanEnd = false;
+    if (profile?.idType === "PASSPORT" && profile.permitExpiryDate && application.loanTermDays) {
+      const loanEndsAt = new Date(Date.now() + application.loanTermDays * 24 * 60 * 60 * 1000);
+      permitExpiresBeforeLoanEnd = profile.permitExpiryDate < loanEndsAt;
+    }
+
     // --- Internal risk score (0 safest - 100 riskiest).
     let risk = 40;
     if (application.employmentStatus === "EMPLOYED") risk -= 15;
@@ -75,6 +91,7 @@ class RulesBasedScorer implements CreditBureauProvider {
     risk += existingActiveLoans * 12;
 
     if (!affordabilityPass) risk += 15;
+    if (permitExpiresBeforeLoanEnd) risk += 20;
 
     risk += seededVariance(application.userId, 6);
     risk = Math.max(0, Math.min(100, Math.round(risk)));
@@ -99,6 +116,9 @@ class RulesBasedScorer implements CreditBureauProvider {
     }
     if (existingActiveLoans >= 3) {
       fraudFlags.push("Applicant has multiple concurrent active loans");
+    }
+    if (permitExpiresBeforeLoanEnd) {
+      fraudFlags.push("Work permit/visa expires before the loan term ends");
     }
 
     return {

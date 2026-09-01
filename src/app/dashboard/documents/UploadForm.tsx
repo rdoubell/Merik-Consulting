@@ -10,6 +10,8 @@ const initialState: ActionResult = { error: null };
 
 const SLOTS = [
   { field: "idDocument", label: "South African ID" },
+  { field: "passport", label: "Passport" },
+  { field: "workPermit", label: "Permit / Visa" },
   { field: "payslip", label: "Latest Payslip" },
   { field: "bankStatement", label: "Recent Bank Statement" },
   { field: "proofOfAddress", label: "Proof of Address" },

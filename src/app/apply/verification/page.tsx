@@ -13,10 +13,13 @@ export default async function VerificationPage({
   const { applicationId } = await searchParams;
   if (!applicationId) redirect("/apply");
 
-  const application = await prisma.application.findUnique({
-    where: { id: applicationId },
-    include: { documents: true },
-  });
+  const [application, profile] = await Promise.all([
+    prisma.application.findUnique({
+      where: { id: applicationId },
+      include: { documents: true },
+    }),
+    prisma.profile.findUnique({ where: { userId: session.userId } }),
+  ]);
   if (!application || application.userId !== session.userId) redirect("/apply");
 
   return (
@@ -28,6 +31,7 @@ export default async function VerificationPage({
       <VerificationForm
         applicationId={applicationId}
         existingDocuments={application.documents}
+        isPassportHolder={profile?.idType === "PASSPORT"}
         needsPayslip={application.employmentStatus === "EMPLOYED" || application.employmentStatus === "CONTRACT"}
       />
     </ApplyShell>

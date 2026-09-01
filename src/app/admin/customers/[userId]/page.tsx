@@ -9,6 +9,8 @@ import { FileText, ArrowRight } from "lucide-react";
 
 const TYPE_LABEL: Record<string, string> = {
   ID_DOCUMENT: "South African ID",
+  PASSPORT: "Passport",
+  WORK_PERMIT: "Permit / Visa",
   PAYSLIP: "Payslip",
   BANK_STATEMENT: "Bank Statement",
   PROOF_OF_ADDRESS: "Proof of Address",
@@ -52,8 +54,17 @@ export default async function CustomerDetailPage({
         <Card>
           <CardBody className="grid gap-4 sm:grid-cols-3">
             <div>
-              <p className="text-xs font-semibold uppercase text-slate-400">ID Number</p>
+              <p className="text-xs font-semibold uppercase text-slate-400">
+                {customer.profile.idType === "PASSPORT" ? "Passport Number" : "ID Number"}
+              </p>
               <p className="mt-0.5 font-medium text-slate-900">{customer.profile.idNumber}</p>
+              {customer.profile.idType === "PASSPORT" && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {customer.profile.permitType} · {customer.profile.permitNumber}
+                  {customer.profile.permitExpiryDate &&
+                    ` · expires ${new Date(customer.profile.permitExpiryDate).toLocaleDateString("en-ZA")}`}
+                </p>
+              )}
             </div>
             <div>
               <p className="text-xs font-semibold uppercase text-slate-400">Date of Birth</p>

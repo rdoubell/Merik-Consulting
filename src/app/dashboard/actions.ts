@@ -10,6 +10,8 @@ export type ActionResult = { error: string } | { error: null };
 
 const DOCUMENT_FIELD_TO_TYPE: Record<string, DocumentType> = {
   idDocument: "ID_DOCUMENT",
+  passport: "PASSPORT",
+  workPermit: "WORK_PERMIT",
   payslip: "PAYSLIP",
   bankStatement: "BANK_STATEMENT",
   proofOfAddress: "PROOF_OF_ADDRESS",

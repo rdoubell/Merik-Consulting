@@ -38,20 +38,29 @@ model User {
   @@index([role])
 }
 
+enum IdentificationType {
+  SA_ID
+  PASSPORT
+}
+
 model Profile {
-  id             String   @id @default(cuid())
-  userId         String   @unique
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id             String             @id @default(cuid())
+  userId         String             @unique
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   firstName      String
   lastName       String
-  idNumber       String   @unique
+  idType         IdentificationType @default(SA_ID)
+  idNumber       String             @unique // SA ID number, or passport number when idType = PASSPORT
+  permitType     String? // e.g. "Work Visa", "Permanent Residence Permit", "Asylum Seeker Permit" — only when idType = PASSPORT
+  permitNumber   String? // only when idType = PASSPORT
+  permitExpiryDate DateTime? // only when idType = PASSPORT
   dateOfBirth    DateTime
   gender         String
   addressLine    String
   province       String
   city           String
   postalCode     String
-  updatedAt      DateTime @updatedAt
+  updatedAt      DateTime           @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +192,8 @@ model Application {
 
 enum DocumentType {
   ID_DOCUMENT
+  PASSPORT
+  WORK_PERMIT
   PAYSLIP
   BANK_STATEMENT
   PROOF_OF_ADDRESS
