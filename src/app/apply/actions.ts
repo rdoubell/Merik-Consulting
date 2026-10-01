@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/server/auth/guard";
 import { storage } from "@/lib/server/storage/storage";
+import { validateUploadedDocument } from "@/lib/validation/document";
 import { evaluateApplication } from "@/lib/server/loans/offer";
 import {
   personalInfoSchema,
@@ -180,9 +181,18 @@ export async function uploadDocumentsAction(
   const session = await requireSession();
   await ownedDraftOrThrow(applicationId, session.userId);
 
-  for (const [field, type] of Object.entries(DOCUMENT_FIELD_TO_TYPE)) {
-    const file = formData.get(field);
-    if (!(file instanceof File) || file.size === 0) continue;
+  const files = Object.entries(DOCUMENT_FIELD_TO_TYPE)
+    .map(([field, type]) => [formData.get(field), type] as const)
+    .filter(([file]) => file instanceof File && file.size > 0) as [File, DocumentType][];
+
+  for (const [file] of files) {
+    const validation = validateUploadedDocument(file);
+    if (validation.error) return { error: validation.error };
+  }
+
+  for (const [file, type] of files) {
+    const validation = validateUploadedDocument(file);
+    if (!validation.mimeType) continue;
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const { filePath } = await storage.save({
@@ -198,7 +208,7 @@ export async function uploadDocumentsAction(
         type,
         filePath,
         originalFileName: file.name,
-        mimeType: file.type || "application/octet-stream",
+        mimeType: validation.mimeType,
       },
     });
   }

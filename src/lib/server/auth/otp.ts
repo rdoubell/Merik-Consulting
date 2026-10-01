@@ -4,6 +4,7 @@ import { notifier } from "@/lib/server/notify/notifier";
 import type { OtpChannel, OtpPurpose } from "@/generated/prisma";
 
 const OTP_TTL_MINUTES = 10;
+const MAX_OTP_ATTEMPTS = 5;
 
 function generateCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -57,8 +58,29 @@ export async function verifyOtp(input: {
   if (!otp) return { ok: false as const, reason: "No code requested" };
   if (otp.expiresAt < new Date())
     return { ok: false as const, reason: "Code expired" };
-  if (otp.code !== input.code)
-    return { ok: false as const, reason: "Incorrect code" };
+
+  if (otp.attempts >= MAX_OTP_ATTEMPTS) {
+    await prisma.otpCode.update({
+      where: { id: otp.id },
+      data: { consumedAt: new Date() },
+    });
+    return { ok: false as const, reason: "Too many incorrect attempts. Request a new code." };
+  }
+
+  if (otp.code !== input.code) {
+    const attempts = otp.attempts + 1;
+    const exhausted = attempts >= MAX_OTP_ATTEMPTS;
+    await prisma.otpCode.update({
+      where: { id: otp.id },
+      data: exhausted
+        ? { attempts, consumedAt: new Date() }
+        : { attempts },
+    });
+    return {
+      ok: false as const,
+      reason: exhausted ? "Too many incorrect attempts. Request a new code." : "Incorrect code",
+    };
+  }
 
   await prisma.otpCode.update({
     where: { id: otp.id },

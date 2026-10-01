@@ -29,6 +29,8 @@ export async function GET(
     headers: {
       "Content-Type": document.mimeType,
       "Content-Disposition": `inline; filename="${document.originalFileName}"`,
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "private, no-store",
     },
   });
 }

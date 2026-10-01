@@ -15,6 +15,9 @@ import { redirect } from "next/navigation";
 
 export type ActionResult = { error: string } | { error: null };
 
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MINUTES = 15;
+
 export async function signupAction(
   _prev: ActionResult,
   formData: FormData
@@ -79,8 +82,34 @@ export async function loginAction(
   });
   if (!user) return { error: "Incorrect email or password" };
 
+  if (user.lockedUntil && user.lockedUntil > new Date()) {
+    return { error: "Too many failed attempts. Please try again later." };
+  }
+
   const valid = await verifyPassword(parsed.data.password, user.passwordHash);
-  if (!valid) return { error: "Incorrect email or password" };
+  if (!valid) {
+    const attempts = user.failedLoginAttempts + 1;
+    const lockedOut = attempts >= MAX_LOGIN_ATTEMPTS;
+    await prisma.user.update({
+      where: { id: user.id },
+      data: lockedOut
+        ? {
+            failedLoginAttempts: 0,
+            lockedUntil: new Date(Date.now() + LOGIN_LOCKOUT_MINUTES * 60 * 1000),
+          }
+        : { failedLoginAttempts: attempts },
+    });
+    return {
+      error: lockedOut
+        ? "Too many failed attempts. Please try again later."
+        : "Incorrect email or password",
+    };
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { failedLoginAttempts: 0, lockedUntil: null },
+  });
 
   await issueOtp({
     userId: user.id,
