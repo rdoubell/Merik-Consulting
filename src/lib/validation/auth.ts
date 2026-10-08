@@ -27,7 +27,3 @@ export const loginSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
-
-export const otpSchema = z.object({
-  code: z.string().length(6, "Enter the 6-digit code"),
-});

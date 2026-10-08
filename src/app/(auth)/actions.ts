@@ -2,14 +2,8 @@
 
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/server/auth/password";
-import { verifyOtp as verifyOtpCode } from "@/lib/server/auth/otp";
-import {
-  createSession,
-  getPendingVerification,
-  clearPendingVerification,
-  destroySession,
-} from "@/lib/server/auth/session";
-import { signupSchema, loginSchema, otpSchema } from "@/lib/validation/auth";
+import { createSession, destroySession } from "@/lib/server/auth/session";
+import { signupSchema, loginSchema } from "@/lib/validation/auth";
 import { redirect } from "next/navigation";
 
 export type ActionResult = { error: string } | { error: null };
@@ -108,63 +102,6 @@ export async function loginAction(
   await createSession({ userId: user.id, role: user.role, email: user.email });
 
   redirect(user.role === "ADMIN" ? "/admin" : "/dashboard");
-}
-
-export async function verifyOtpAction(
-  _prev: ActionResult,
-  formData: FormData
-): Promise<ActionResult> {
-  const pending = await getPendingVerification();
-  if (!pending) {
-    return { error: "Your verification session expired. Please start again." };
-  }
-
-  const parsed = otpSchema.safeParse({ code: String(formData.get("code") ?? "") });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid code" };
-  }
-
-  const result = await verifyOtpCode({
-    userId: pending.userId,
-    purpose: pending.purpose,
-    code: parsed.data.code,
-  });
-
-  if (!result.ok) return { error: result.reason };
-
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { id: pending.userId },
-  });
-
-  if (pending.purpose === "SIGNUP_VERIFICATION") {
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { emailVerifiedAt: new Date() },
-    });
-  }
-
-  await createSession({ userId: user.id, role: user.role, email: user.email });
-  await clearPendingVerification();
-
-  redirect(user.role === "ADMIN" ? "/admin" : "/dashboard");
-}
-
-export async function resendOtpAction() {
-  const pending = await getPendingVerification();
-  if (!pending) return { error: "Your verification session expired." };
-
-  const user = await prisma.user.findUniqueOrThrow({
-    where: { id: pending.userId },
-  });
-
-  await issueOtp({
-    userId: user.id,
-    channel: "EMAIL",
-    purpose: pending.purpose,
-    toAddress: user.email,
-  });
-
-  return { error: null };
 }
 
 export async function logoutAction() {
