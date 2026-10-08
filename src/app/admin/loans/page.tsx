@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Card, CardBody } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { customerDisplayName } from "@/lib/customerName";
 import { cn } from "@/lib/cn";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
@@ -73,9 +74,7 @@ export default async function LoansPage({
                 {loans.map((loan) => (
                   <tr key={loan.id} className="border-b border-slate-50">
                     <td className="px-6 py-3 font-medium text-slate-900">
-                      {loan.application.user.profile
-                        ? `${loan.application.user.profile.firstName} ${loan.application.user.profile.lastName}`
-                        : loan.application.user.email}
+                      {customerDisplayName(loan.application.user)}
                     </td>
                     <td className="px-6 py-3">{formatRand(loan.principal)}</td>
                     <td className="px-6 py-3">{loan.termDays} days</td>

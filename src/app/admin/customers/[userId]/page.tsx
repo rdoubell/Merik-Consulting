@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { Card, CardBody } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { customerDisplayName } from "@/lib/customerName";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { DocumentVerifyButtons } from "./DocumentVerifyButtons";
 import { ApplicationStatusSelect } from "./ApplicationStatusSelect";
+import { NewLoanForm } from "./NewLoanForm";
 import { FileText, ArrowRight } from "lucide-react";
 
 const TYPE_LABEL: Record<string, string> = {
@@ -44,9 +46,7 @@ export default async function CustomerDetailPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold text-slate-900">
-          {customer.profile ? `${customer.profile.firstName} ${customer.profile.lastName}` : customer.email}
-        </h1>
+        <h1 className="text-2xl font-extrabold text-slate-900">{customerDisplayName(customer)}</h1>
         <p className="text-sm text-slate-500">{customer.email} · {customer.phone}</p>
       </div>
 
@@ -171,6 +171,18 @@ export default async function CustomerDetailPage({
             </Card>
           ))}
         </div>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-bold text-slate-900">Add Loan</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Record a loan disbursed outside the online application (e.g. an existing/informal loan).
+        </p>
+        <Card className="mt-3">
+          <CardBody>
+            <NewLoanForm userId={customer.id} />
+          </CardBody>
+        </Card>
       </div>
     </div>
   );

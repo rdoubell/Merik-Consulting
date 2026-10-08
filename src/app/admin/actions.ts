@@ -2,7 +2,10 @@
 
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/server/auth/guard";
+import { hashPassword } from "@/lib/server/auth/password";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import crypto from "node:crypto";
 import type { VerificationStatus, ApplicationStatus } from "@/generated/prisma";
 
 async function logAction(
@@ -206,4 +209,137 @@ export async function activateInterestConfigAction(configId: string) {
   ]);
 
   revalidatePath("/admin/interest-config");
+}
+
+// ---------------------------------------------------------------------------
+// Manual customer / loan entry (CRM-style, for clients onboarded outside the
+// self-serve application flow)
+// ---------------------------------------------------------------------------
+
+export async function createCustomerAction(
+  _prev: { error: string } | { error: null },
+  formData: FormData
+) {
+  const session = await requireAdmin();
+
+  const firstName = String(formData.get("firstName") ?? "").trim();
+  const lastName = String(formData.get("lastName") ?? "").trim();
+  const emailInput = String(formData.get("email") ?? "").trim();
+  const phoneInput = String(formData.get("phone") ?? "").trim();
+
+  if (!firstName || !lastName) {
+    return { error: "First and last name are required" };
+  }
+
+  const slug = `${firstName}.${lastName}`.toLowerCase().replace(/[^a-z0-9.]/g, "");
+
+  let email = emailInput;
+  if (emailInput) {
+    if (await prisma.user.findUnique({ where: { email: emailInput } })) {
+      return { error: "A customer with this email already exists" };
+    }
+  } else {
+    email = `${slug}.pending@merik.local`;
+    let suffix = 1;
+    while (await prisma.user.findUnique({ where: { email } })) {
+      email = `${slug}.pending${suffix}@merik.local`;
+      suffix += 1;
+    }
+  }
+
+  let phone = phoneInput;
+  if (phoneInput) {
+    if (await prisma.user.findUnique({ where: { phone: phoneInput } })) {
+      return { error: "A customer with this phone number already exists" };
+    }
+  } else {
+    do {
+      phone = `0000${crypto.randomInt(100000, 999999)}`;
+    } while (await prisma.user.findUnique({ where: { phone } }));
+  }
+
+  const passwordHash = await hashPassword(crypto.randomBytes(24).toString("hex"));
+
+  const user = await prisma.user.create({
+    data: { email, phone, passwordHash, role: "CUSTOMER", firstName, lastName },
+  });
+
+  await logAction(session.userId, "CUSTOMER_CREATED_MANUALLY", undefined, { userId: user.id });
+  revalidatePath("/admin/customers");
+  redirect(`/admin/customers/${user.id}`);
+}
+
+export async function createManualLoanAction(
+  _prev: { error: string } | { error: null },
+  formData: FormData
+) {
+  const session = await requireAdmin();
+
+  const userId = String(formData.get("userId") ?? "");
+  const amount = Number(formData.get("amount"));
+  const interestRatePct = Number(formData.get("interestRatePct"));
+  const disbursedAtRaw = String(formData.get("disbursedAt") ?? "");
+  const dueDateRaw = String(formData.get("dueDate") ?? "");
+
+  if (!userId || !amount || amount <= 0 || Number.isNaN(interestRatePct) || !disbursedAtRaw || !dueDateRaw) {
+    return { error: "Please fill in all fields with valid values" };
+  }
+
+  const disbursedAt = new Date(disbursedAtRaw);
+  const dueDate = new Date(dueDateRaw);
+  if (Number.isNaN(disbursedAt.getTime()) || Number.isNaN(dueDate.getTime())) {
+    return { error: "Invalid date" };
+  }
+  if (dueDate <= disbursedAt) {
+    return { error: "Due date must be after the disbursed date" };
+  }
+
+  const termDays = Math.round((dueDate.getTime() - disbursedAt.getTime()) / (1000 * 60 * 60 * 24));
+  const interestAmount = Math.round(amount * (interestRatePct / 100) * 100) / 100;
+  const totalRepayable = Math.round((amount + interestAmount) * 100) / 100;
+  const isOverdue = dueDate < new Date();
+
+  const loan = await prisma.$transaction(async (tx) => {
+    const application = await tx.application.create({
+      data: {
+        userId,
+        status: "APPROVED",
+        loanAmount: amount,
+        loanTermDays: termDays,
+        submittedAt: disbursedAt,
+      },
+    });
+
+    const loan = await tx.loan.create({
+      data: {
+        applicationId: application.id,
+        status: isOverdue ? "OVERDUE" : "ACTIVE",
+        principal: amount,
+        interestRate: interestRatePct,
+        serviceFee: 0,
+        totalRepayable,
+        termDays,
+        approvedById: session.userId,
+        approvedAt: disbursedAt,
+        disbursedAt,
+        dueDate,
+      },
+    });
+
+    await tx.repaymentInstallment.create({
+      data: {
+        loanId: loan.id,
+        dueDate,
+        amountDue: totalRepayable,
+        status: isOverdue ? "OVERDUE" : "PENDING",
+      },
+    });
+
+    return loan;
+  });
+
+  await logAction(session.userId, "LOAN_CREATED_MANUALLY", loan.applicationId, { loanId: loan.id });
+  revalidatePath(`/admin/customers/${userId}`);
+  revalidatePath("/admin/loans");
+  redirect(`/admin/customers/${userId}`);
 }

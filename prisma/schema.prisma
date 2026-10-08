@@ -23,6 +23,8 @@ model User {
   phone          String    @unique
   passwordHash   String
   role           Role      @default(CUSTOMER)
+  firstName      String? // display name for admin-created customers without a full KYC profile
+  lastName       String?
   popiaConsentAt DateTime?
   emailVerifiedAt DateTime?
   phoneVerifiedAt DateTime?

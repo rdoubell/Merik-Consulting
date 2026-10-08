@@ -2,8 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Field";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { ButtonLink } from "@/components/ui/Button";
+import { customerDisplayName } from "@/lib/customerName";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { Search, UserPlus } from "lucide-react";
 
 export default async function CustomersPage({
   searchParams,
@@ -34,9 +36,14 @@ export default async function CustomersPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-extrabold text-slate-900">Customers</h1>
-        <p className="text-sm text-slate-500">Search and manage customer applications.</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold text-slate-900">Customers</h1>
+          <p className="text-sm text-slate-500">Search and manage customer applications.</p>
+        </div>
+        <ButtonLink href="/admin/customers/new" size="sm">
+          <UserPlus className="h-4 w-4" /> Add Client
+        </ButtonLink>
       </div>
 
       <form className="max-w-md">
@@ -71,7 +78,7 @@ export default async function CustomersPage({
                         href={`/admin/customers/${c.id}`}
                         className="font-medium text-brand-700 hover:underline"
                       >
-                        {c.profile ? `${c.profile.firstName} ${c.profile.lastName}` : "—"}
+                        {customerDisplayName(c)}
                       </Link>
                     </td>
                     <td className="px-6 py-3">{c.email}</td>

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardBody } from "@/components/ui/Card";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Alert } from "@/components/ui/Alert";
+import { customerDisplayName } from "@/lib/customerName";
 import { notFound } from "next/navigation";
 import { LoanActions } from "./LoanActions";
 
@@ -40,7 +41,7 @@ export default async function LoanDetailPage({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">
-            {app.user.profile ? `${app.user.profile.firstName} ${app.user.profile.lastName}` : app.user.email}
+            {customerDisplayName(app.user)}
           </h1>
           <p className="text-sm text-slate-500">{app.user.email} · {app.user.phone}</p>
         </div>
