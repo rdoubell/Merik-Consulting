@@ -2,10 +2,9 @@
 
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/server/auth/password";
-import { issueOtp, verifyOtp as verifyOtpCode } from "@/lib/server/auth/otp";
+import { verifyOtp as verifyOtpCode } from "@/lib/server/auth/otp";
 import {
   createSession,
-  createPendingVerification,
   getPendingVerification,
   clearPendingVerification,
   destroySession,
@@ -49,18 +48,13 @@ export async function signupAction(
       phone: parsed.data.phone,
       passwordHash,
       popiaConsentAt: new Date(),
+      emailVerifiedAt: new Date(),
     },
   });
 
-  await issueOtp({
-    userId: user.id,
-    channel: "EMAIL",
-    purpose: "SIGNUP_VERIFICATION",
-    toAddress: user.email,
-  });
-  await createPendingVerification(user.id, "SIGNUP_VERIFICATION");
+  await createSession({ userId: user.id, role: user.role, email: user.email });
 
-  redirect("/verify-otp");
+  redirect("/dashboard");
 }
 
 export async function loginAction(
@@ -111,15 +105,9 @@ export async function loginAction(
     data: { failedLoginAttempts: 0, lockedUntil: null },
   });
 
-  await issueOtp({
-    userId: user.id,
-    channel: "EMAIL",
-    purpose: "LOGIN",
-    toAddress: user.email,
-  });
-  await createPendingVerification(user.id, "LOGIN");
+  await createSession({ userId: user.id, role: user.role, email: user.email });
 
-  redirect("/verify-otp");
+  redirect(user.role === "ADMIN" ? "/admin" : "/dashboard");
 }
 
 export async function verifyOtpAction(
